@@ -10,35 +10,47 @@ def get_messes(url):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=15)
+        # On force l'encodage pour éviter les caractères bizarres (é, à, etc.)
+        r.encoding = r.apparent_encoding
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # Tentative 1 : Recherche par classe standard Messes.info
-        items = soup.find_all(['li', 'div'], class_='h-event')
-        
-        if not items:
-            # Tentative 2 : Recherche par les balises de temps si la classe a changé
-            items = soup.find_all('time')
-            
         results = []
-        for item in items[:8]: # On prend les 8 prochaines
-            # On récupère le texte parent pour avoir la date et le lieu
+        
+        # Sur Messes.info, les horaires sont souvent dans des balises <article> ou <li> 
+        # avec des classes qui contiennent 'event'
+        items = soup.find_all(['li', 'article', 'div'], class_=lambda x: x and 'event' in x)
+        
+        for item in items:
+            # On extrait le texte et on nettoie les espaces en trop
             texte = item.get_text(separator=" ", strip=True)
-            if len(texte) > 10: # Évite les lignes vides ou trop courtes
+            # On filtre pour garder les lignes qui ont l'air d'une messe (contient souvent ':' pour l'heure)
+            if ":" in texte and len(texte) > 15:
                 results.append(texte)
         
-        return results if results else ["Aucune messe trouvée pour le moment."]
+        # Suppression des doublons éventuels
+        results = list(dict.fromkeys(results))
+        
+        return results[:10] # On affiche les 10 premières
     except Exception as e:
-        return [f"Erreur de connexion : {e}"]
+        return [f"Erreur : {e}"]
 
+# Tes 3 paroisses
 paroisses = {
     "St-François d'Assise": "https://messes.info/communaute/gr/38/saint-francois-d-assise",
     "St-Pierre (Couleurs)": "https://messes.info/communaute/gr/38/saint-pierre-du-pays-des-couleurs",
     "St-Martin (Isle Crémieu)": "https://messes.info/communaute/gr/38/saint-martin-de-l-isle-cremieu"
 }
 
+st.info("Recherche des horaires en cours sur Messes.info...")
+
 for nom, url in paroisses.items():
-    with st.expander(nom, expanded=False):
-        infos = get_messes(url)
-        for info in infos:
-            st.write(f"• {info}")
+    with st.expander(f"📍 {nom}", expanded=True):
+        messes = get_messes(url)
+        if messes:
+            for m in messes:
+                st.write(f"{m}")
+        else:
+            st.warning("Aucun horaire détecté. Vérifiez sur le site si le calendrier est rempli.")
+
+st.caption("Données extraites en temps réel de Messes.info")
